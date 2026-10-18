@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ lst.name }}</h1>
+<p class="sub">{{ lst.description }}</p>
+
+<form method="post" action="/lists/{{ lst.id }}/items">
+<textarea name="titles" placeholder="One title per line. Add a year to avoid mix-ups, e.g. Dune (2021)" required></textarea>
+<p><select name="media_type"><option value="movie">Movies</option><option value="show">TV shows</option></select>
+<button>Add titles</button></p>
+</form>
+
+{% if items %}
+<table>
+<tr><th>Title</th><th>Year</th><th>Type</th><th></th></tr>
+{% for i in items %}
+<tr>
+<td>{{ i.title }}</td><td>{{ i.year or "" }}</td><td>{{ "TV show" if i.media_type == "show" else "Movie" }}</td>
+<td><form method="post" action="/lists/{{ lst.id }}/items/{{ i.id }}/delete"><button class="plain">Remove</button></form></td>
+</tr>
+{% endfor %}
+</table>
+{% else %}
+<p>This list is empty. Paste some titles above.</p>
+{% endif %}
+
+<form class="row" method="post" action="/lists/{{ lst.id }}/delete" onsubmit="return confirm('Delete this list? The Plex collection is kept until you remove it in Plex.')">
+<button class="plain">Delete list</button>
+</form>
+{% endblock %}

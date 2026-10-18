@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Lists</h1>
+<p class="sub">Each list becomes a collection in your Plex library when you sync.</p>
+
+{% if not plex %}<div class="err">Plex isn't connected. Set PLEX_URL and PLEX_TOKEN to enable syncing.</div>{% endif %}
+{% if last.error %}<div class="err">Last sync failed: {{ last.error }}</div>{% endif %}
+
+<form class="row" method="post" action="/lists">
+<input name="name" placeholder="List name" required>
+<input name="description" placeholder="Description (optional)" size="32">
+<button>Create list</button>
+</form>
+
+{% if lists %}
+<table>
+<tr><th>List</th><th>Movies</th><th>Shows</th></tr>
+{% for l in lists %}
+<tr>
+<td><a href="/lists/{{ l.id }}">{{ l.name }}</a>{% if l.description %}<br><span class="ok">{{ l.description }}</span>{% endif %}</td>
+<td>{{ l.items | selectattr("media_type","equalto","movie") | list | length }}</td>
+<td>{{ l.items | selectattr("media_type","equalto","show") | list | length }}</td>
+</tr>
+{% endfor %}
+</table>
+{% else %}
+<p>No lists yet. Create one above, then add titles to it.</p>
+{% endif %}
+
+<form class="row" method="post" action="/sync">
+<button {% if not plex %}disabled{% endif %}>Sync to Plex</button>
+{% if last.at %}<span class="ok">Last sync {{ last.at }}</span>{% endif %}
+</form>
+
+{% for name, r in last.report.items() %}
+{% if r.missing %}
+<p class="ok"><strong>{{ name }}</strong>: {{ r.matched }} matched, not found in Plex: {{ r.missing | join(", ") }}</p>
+{% endif %}
+{% endfor %}
+{% endblock %}

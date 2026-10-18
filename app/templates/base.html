@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Listarr</title>
+<style>
+:root{--bg:#f6f7f5;--ink:#1c2321;--muted:#66706c;--line:#d9ddd9;--accent:#1f6f5c;--card:#fff}
+@media (prefers-color-scheme:dark){:root{--bg:#161b19;--ink:#e6ebe8;--muted:#94a09b;--line:#2c3532;--accent:#5fc4a8;--card:#1d2321}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "Iowan Old Style","Palatino Linotype",Georgia,serif}
+header{border-bottom:1px solid var(--line);padding:14px 24px;display:flex;gap:24px;align-items:baseline;flex-wrap:wrap}
+header .brand{font-size:1.4rem;font-weight:700;color:var(--ink);text-decoration:none}
+nav a{color:var(--muted);text-decoration:none;margin-right:16px}
+nav a:hover,nav a:focus-visible{color:var(--accent)}
+main{max-width:860px;margin:0 auto;padding:28px 24px 64px}
+h1{font-size:1.7rem;margin:0 0 6px}
+p.sub{color:var(--muted);margin:0 0 24px}
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line)}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line)}
+th{color:var(--muted);font-weight:600;font-size:.9rem}
+input,select,textarea,button{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);padding:7px 10px;border-radius:4px}
+textarea{width:100%;min-height:110px}
+button{cursor:pointer;background:var(--accent);color:#fff;border-color:var(--accent)}
+button.plain{background:none;color:var(--muted);border-color:var(--line)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+form.row{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}
+.err{border-left:3px solid #b3402f;padding:8px 12px;background:var(--card);margin:16px 0}
+.ok{color:var(--muted);font-size:.9rem}
+a{color:var(--accent)}
+.tag{display:inline-block;border:1px solid var(--line);padding:0 8px;border-radius:10px;font-size:.85rem;margin-right:4px;text-decoration:none}
+</style>
+</head>
+<body>
+<header>
+<a class="brand" href="/">Listarr</a>
+<nav><a href="/">Lists</a><a href="/library">Plex library</a></nav>
+</header>
+<main>{% block content %}{% endblock %}</main>
+</body>
+</html>

@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Plex library</h1>
+<p class="sub">Browse what's on your server and see which lists each title belongs to.</p>
+
+{% if error %}<div class="err">{{ error }}</div>{% endif %}
+
+<form class="row" method="get" action="/library">
+<select name="type">
+<option value="movie" {{ "selected" if type == "movie" }}>Movies</option>
+<option value="show" {{ "selected" if type == "show" }}>TV shows</option>
+</select>
+<select name="list">
+<option value="">All titles</option>
+<option value="none" {{ "selected" if sel == "none" }}>Not in any list</option>
+{% for l in lists %}<option value="{{ l.id }}" {{ "selected" if sel == l.id|string }}>In: {{ l.name }}</option>{% endfor %}
+</select>
+<input name="q" value="{{ q }}" placeholder="Search titles">
+<button>Filter</button>
+</form>
+
+{% if rows %}
+<p class="ok">{{ rows | length }} titles</p>
+<table>
+<tr><th>Title</th><th>Year</th><th>Lists</th></tr>
+{% for r in rows %}
+<tr><td>{{ r.title }}</td><td>{{ r.year }}</td>
+<td>{% for l in r.lists %}<a class="tag" href="/lists/{{ l.id }}">{{ l.name }}</a>{% endfor %}</td></tr>
+{% endfor %}
+</table>
+{% elif not error %}
+<p>No titles match this filter.</p>
+{% endif %}
+{% endblock %}
