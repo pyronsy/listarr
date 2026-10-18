@@ -3,7 +3,7 @@
 <h1>Plex library</h1>
 <p class="sub">Browse what's on your server and see which lists each title belongs to.</p>
 
-{% if error %}<div class="err">{{ error }}</div>{% endif %}
+{% if error %}<div class="err">{{ error }}{% if not plex %} <a href="/settings">Connect Plex in Settings</a>.{% endif %}</div>{% endif %}
 
 <form class="row" method="get" action="/library">
 <select name="type">

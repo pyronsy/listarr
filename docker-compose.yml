@@ -7,11 +7,7 @@ services:
     ports:
       - "4747:4747"
     environment:
-      PLEX_URL: http://192.168.1.10:32400   # your Plex server
-      PLEX_TOKEN: your-plex-token
-      PLEX_MOVIE_LIBRARY: Movies            # exact Plex library names
-      PLEX_TV_LIBRARY: TV Shows
-      SYNC_INTERVAL_MINUTES: 0              # 0 = manual sync only
+      SYNC_INTERVAL_MINUTES: 0   # 0 = manual sync only
       TZ: America/New_York
     volumes:
       - ./data:/data

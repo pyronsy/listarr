@@ -6,9 +6,9 @@ which lists a title belongs to. Single user, no login: run it on your local netw
 
 ## Run with Docker Compose
 
-1. Copy `docker-compose.yml`, set `PLEX_URL`, `PLEX_TOKEN` and your library names.
-2. Replace `YOUR_GITHUB_USERNAME` in the image name.
-3. `docker compose up -d`, then open http://localhost:4747
+1. Copy `docker-compose.yml` and replace `YOUR_GITHUB_USERNAME` in the image name.
+2. `docker compose up -d`, then open http://localhost:4747
+3. Open **Settings**, sign in with Plex, pick your server, then pick your movie and TV libraries.
 
 Update later with `docker compose pull && docker compose up -d`.
 
@@ -23,7 +23,7 @@ Update later with `docker compose pull && docker compose up -d`.
 ## Local development
 
     pip install -r requirements.txt
-    DATA_DIR=./data PLEX_URL=... PLEX_TOKEN=... uvicorn app.main:app --reload --port 4747
+    DATA_DIR=./data uvicorn app.main:app --reload --port 4747
 
 ## How matching works
 
@@ -34,9 +34,11 @@ deleting a list does not delete its Plex collection.
 
 ## Settings
 
+Plex sign-in, server and library choices are made in the web interface and saved to
+`/data/settings.json` (mode 600). Keep the `./data` volume private and out of git.
+The Settings page also accepts a server address and token manually if you prefer.
+
 | Variable | Purpose |
 |---|---|
-| `PLEX_URL`, `PLEX_TOKEN` | Plex server address and token |
-| `PLEX_MOVIE_LIBRARY`, `PLEX_TV_LIBRARY` | Exact library names in Plex |
 | `SYNC_INTERVAL_MINUTES` | Automatic sync interval; `0` disables it |
-| `DATA_DIR` | SQLite location (default `/data`) |
+| `DATA_DIR` | SQLite and settings location (default `/data`) |

@@ -9,7 +9,7 @@ from fastapi import FastAPI, Form, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from . import plex_sync
+from . import plex_sync, settings
 from .db import Item, MediaList, SessionLocal, init_db
 
 BASE = Path(__file__).parent
@@ -135,7 +135,7 @@ async def sync():
 def library(request: Request, type: str = "movie", list: str = "", q: str = ""):
     media_type = "show" if type == "show" else "movie"
     if not plex_sync.configured():
-        return render(request, "library.html", rows=[], lists=[], error="Plex isn't configured. Set PLEX_URL and PLEX_TOKEN.", type=media_type, sel=list, q=q)
+        return render(request, "library.html", rows=[], lists=[], error="Plex isn't connected yet.", type=media_type, sel=list, q=q)
     with SessionLocal() as s:
         lists = s.query(MediaList).order_by(MediaList.name).all()
         membership: dict = {}
@@ -162,3 +162,78 @@ def library(request: Request, type: str = "movie", list: str = "", q: str = ""):
             rows.append({"title": p.title, "year": getattr(p, "year", ""), "lists": in_lists})
         rows.sort(key=lambda r: r["title"].lower())
         return render(request, "library.html", rows=rows, lists=lists, error=None, type=media_type, sel=list, q=q)
+
+
+# ---- Settings: connect Plex from the browser ---------------------------------
+
+@app.get("/settings")
+def settings_page(request: Request):
+    plex_sync.poll_login()
+    s = settings.load()
+    ctx = {
+        "s": s,
+        "signed_in": bool(s.get("token")),
+        "has_server": plex_sync.server_chosen(),
+        "pending": plex_sync.login_pending(),
+        "servers": [],
+        "movie_libs": [],
+        "show_libs": [],
+        "error": None,
+    }
+    try:
+        if ctx["signed_in"] and not ctx["has_server"]:
+            ctx["servers"] = plex_sync.servers()
+        elif ctx["has_server"]:
+            secs = plex_sync.sections()
+            ctx["movie_libs"] = [t for t, k in secs if k == "movie"]
+            ctx["show_libs"] = [t for t, k in secs if k == "show"]
+    except Exception as e:
+        ctx["error"] = f"Couldn't reach Plex: {e}"
+    return render(request, "settings.html", **ctx)
+
+
+@app.post("/settings/plex/login")
+def plex_login(request: Request):
+    url = plex_sync.start_login(str(request.url_for("settings_page")))
+    return RedirectResponse(url, status_code=303)
+
+
+@app.get("/settings/plex/status")
+def plex_status():
+    plex_sync.poll_login()
+    return {"signed_in": plex_sync.signed_in(), "pending": plex_sync.login_pending()}
+
+
+@app.post("/settings/plex/token")
+def plex_manual(url: str = Form(...), token: str = Form(...)):
+    settings.update(token=token.strip(), server_url=url.strip().rstrip("/"), server_name="", movie_library="", tv_library="")
+    plex_sync.reset_cache()
+    return RedirectResponse("/settings", status_code=303)
+
+
+@app.post("/settings/plex/server")
+def plex_server(server: str = Form(...)):
+    settings.update(server_name=server, server_url="", movie_library="", tv_library="")
+    plex_sync.reset_cache()
+    return RedirectResponse("/settings", status_code=303)
+
+
+@app.post("/settings/plex/libraries")
+def plex_libraries(movie_library: str = Form(""), tv_library: str = Form("")):
+    settings.update(movie_library=movie_library, tv_library=tv_library)
+    plex_sync.reset_cache()
+    return RedirectResponse("/settings", status_code=303)
+
+
+@app.post("/settings/plex/change-server")
+def plex_change_server():
+    settings.update(server_name="", server_url="", movie_library="", tv_library="")
+    plex_sync.reset_cache()
+    return RedirectResponse("/settings", status_code=303)
+
+
+@app.post("/settings/plex/signout")
+def plex_signout():
+    settings.clear_plex()
+    plex_sync.reset_cache()
+    return RedirectResponse("/settings", status_code=303)

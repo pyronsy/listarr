@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Settings</h1>
+<p class="sub">Connect Listarr to your Plex server. Your token is stored in the data folder, never in the compose file.</p>
+
+{% if error %}<div class="err">{{ error }}</div>{% endif %}
+
+{% if not signed_in %}
+  {% if pending %}
+  <p>Waiting for you to finish signing in at Plex. This page updates when you're done.</p>
+  <form class="row" method="post" action="/settings/plex/login"><button class="plain">Start over</button></form>
+  <script>
+  setInterval(async () => {
+    try {
+      const r = await (await fetch("/settings/plex/status")).json();
+      if (r.signed_in || !r.pending) location.reload();
+    } catch (e) {}
+  }, 3000);
+  </script>
+  {% else %}
+  <form class="row" method="post" action="/settings/plex/login"><button>Sign in with Plex</button></form>
+  <details>
+    <summary>Use a server address and token instead</summary>
+    <form class="row" method="post" action="/settings/plex/token">
+      <input name="url" placeholder="http://192.168.1.10:32400" size="30" required>
+      <input name="token" placeholder="Plex token" size="30" required>
+      <button>Save</button>
+    </form>
+  </details>
+  {% endif %}
+
+{% elif not has_server %}
+  <h2>Choose your server</h2>
+  {% if servers %}
+  <form class="row" method="post" action="/settings/plex/server">
+    <select name="server">{% for name in servers %}<option>{{ name }}</option>{% endfor %}</select>
+    <button>Use this server</button>
+  </form>
+  {% elif not error %}
+  <p>No Plex servers were found on this account.</p>
+  {% endif %}
+  <form class="row" method="post" action="/settings/plex/signout"><button class="plain">Sign out</button></form>
+
+{% else %}
+  <p>Connected to <strong>{{ s.server_name or s.server_url }}</strong>.</p>
+  {% if not error %}
+  <h2>Libraries</h2>
+  <form class="row" method="post" action="/settings/plex/libraries">
+    <label>Movies
+      <select name="movie_library">
+        <option value="">None</option>
+        {% for n in movie_libs %}<option {{ "selected" if n == s.movie_library }}>{{ n }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>TV shows
+      <select name="tv_library">
+        <option value="">None</option>
+        {% for n in show_libs %}<option {{ "selected" if n == s.tv_library }}>{{ n }}</option>{% endfor %}
+      </select>
+    </label>
+    <button>Save libraries</button>
+  </form>
+  {% endif %}
+  <form class="row" method="post" action="/settings/plex/change-server"><button class="plain">Change server</button></form>
+  <form class="row" method="post" action="/settings/plex/signout"><button class="plain">Sign out</button></form>
+{% endif %}
+{% endblock %}

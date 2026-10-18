@@ -3,7 +3,7 @@
 <h1>Lists</h1>
 <p class="sub">Each list becomes a collection in your Plex library when you sync.</p>
 
-{% if not plex %}<div class="err">Plex isn't connected. Set PLEX_URL and PLEX_TOKEN to enable syncing.</div>{% endif %}
+{% if not plex %}<div class="err">Plex isn't connected. <a href="/settings">Connect Plex in Settings</a> to enable syncing.</div>{% endif %}
 {% if last.error %}<div class="err">Last sync failed: {{ last.error }}</div>{% endif %}
 
 <form class="row" method="post" action="/lists">

@@ -1,39 +1,113 @@
-import os
 import threading
 import time
 
+from plexapi.myplex import MyPlexAccount, MyPlexPinLogin
 from plexapi.server import PlexServer
 
-PLEX_URL = os.getenv("PLEX_URL", "")
-PLEX_TOKEN = os.getenv("PLEX_TOKEN", "")
-LIBRARIES = {
-    "movie": os.getenv("PLEX_MOVIE_LIBRARY", "Movies"),
-    "show": os.getenv("PLEX_TV_LIBRARY", "TV Shows"),
-}
+from . import settings
 
 _cache: dict = {}
 _lock = threading.Lock()
+_pin: dict = {"login": None}
 
 
-def configured() -> bool:
-    return bool(PLEX_URL and PLEX_TOKEN)
+def reset_cache():
+    with _lock:
+        _cache.clear()
 
 
 def norm(title: str) -> str:
     return "".join(c for c in title.lower() if c.isalnum())
 
 
-def connect() -> PlexServer:
-    return PlexServer(PLEX_URL, PLEX_TOKEN, timeout=30)
+# ---- connection state -------------------------------------------------------
 
+def signed_in() -> bool:
+    return bool(settings.load().get("token"))
+
+
+def server_chosen() -> bool:
+    s = settings.load()
+    return bool(s.get("server_url") or s.get("server_name"))
+
+
+def libraries() -> dict:
+    s = settings.load()
+    libs = {"movie": s.get("movie_library", ""), "show": s.get("tv_library", "")}
+    return {k: v for k, v in libs.items() if v}
+
+
+def configured() -> bool:
+    return signed_in() and server_chosen() and bool(libraries())
+
+
+# ---- Plex sign-in (browser PIN flow) ----------------------------------------
+
+def start_login(forward_url: str) -> str:
+    pin = MyPlexPinLogin(
+        oauth=True,
+        headers={
+            "X-Plex-Product": "Listarr",
+            "X-Plex-Client-Identifier": settings.client_id(),
+        },
+    )
+    _pin["login"] = pin
+    return pin.oauthUrl(forward_url)
+
+
+def login_pending() -> bool:
+    return _pin["login"] is not None
+
+
+def poll_login() -> bool:
+    """Check whether the user finished signing in at plex.tv; stores the token."""
+    pin = _pin["login"]
+    if pin is None:
+        return False
+    try:
+        if pin.checkLogin() and pin.token:
+            settings.update(token=pin.token)
+            _pin["login"] = None
+            return True
+        if pin.expired:
+            _pin["login"] = None
+    except Exception:
+        _pin["login"] = None
+    return False
+
+
+def account() -> MyPlexAccount:
+    return MyPlexAccount(token=settings.load()["token"])
+
+
+def servers() -> list:
+    return [r.name for r in account().resources() if "server" in (r.provides or "")]
+
+
+def connect() -> PlexServer:
+    s = settings.load()
+    if s.get("server_url"):
+        return PlexServer(s["server_url"], s["token"], timeout=30)
+    return account().resource(s["server_name"]).connect(timeout=30)
+
+
+def sections() -> list:
+    return [(sec.title, sec.type) for sec in connect().library.sections()]
+
+
+# ---- library access ---------------------------------------------------------
 
 def library_items(srv: PlexServer, media_type: str, force: bool = False, ttl: int = 60):
-    """All titles in the Plex library for a media type (cached briefly)."""
+    """All titles in the chosen Plex library for a media type (cached briefly)."""
+    name = libraries().get(media_type)
+    if not name:
+        kind = "movie" if media_type == "movie" else "TV"
+        raise ValueError(f"No {kind} library selected in Settings.")
     with _lock:
         hit = _cache.get(media_type)
         if hit and not force and time.time() - hit[0] < ttl:
             return hit[1]
-        items = srv.library.section(LIBRARIES[media_type]).all()
+        items = srv.library.section(name).all()
         _cache[media_type] = (time.time(), items)
         return items
 
@@ -56,15 +130,18 @@ def sync_all(lists) -> dict:
     """Create/update one Plex collection per list. Returns a per-list report."""
     srv = connect()
     report = {}
-    for media_type in ("movie", "show"):
-        section = srv.library.section(LIBRARIES[media_type])
+    for media_type, lib_name in libraries().items():
+        section = srv.library.section(lib_name)
         idx = index_by_title(library_items(srv, media_type, force=True))
         for lst in lists:
             items = [i for i in lst.items if i.media_type == media_type]
             matched, missing = [], []
             for it in items:
                 p = match(idx, it.title, it.year)
-                (matched if p else missing).append(p or it.title)
+                if p:
+                    matched.append(p)
+                else:
+                    missing.append(it.title)
             existing = [c for c in section.collections(title=lst.name) if c.title == lst.name]
             if existing:
                 coll = existing[0]
