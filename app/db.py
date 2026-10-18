@@ -1,6 +1,6 @@
 import os
 
-from sqlalchemy import Column, ForeignKey, Integer, String, create_engine
+from sqlalchemy import Column, ForeignKey, Integer, String, create_engine, inspect, text
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 
 DATA_DIR = os.getenv("DATA_DIR", "/data")
@@ -36,8 +36,16 @@ class Item(Base):
     title = Column(String, nullable=False)
     year = Column(Integer, nullable=True)
     media_type = Column(String, nullable=False, default="movie")  # movie | show
+    imdb_id = Column(String, nullable=True)
+    tmdb_id = Column(String, nullable=True)
+    tvdb_id = Column(String, nullable=True)
     media_list = relationship("MediaList", back_populates="items")
 
 
 def init_db():
     Base.metadata.create_all(engine)
+    existing = {c["name"] for c in inspect(engine).get_columns("items")}
+    with engine.begin() as conn:  # add id columns to databases created by earlier versions
+        for col in ("imdb_id", "tmdb_id", "tvdb_id"):
+            if col not in existing:
+                conn.execute(text(f"ALTER TABLE items ADD COLUMN {col} VARCHAR"))

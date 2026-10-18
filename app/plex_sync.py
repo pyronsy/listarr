@@ -112,16 +112,37 @@ def library_items(srv: PlexServer, media_type: str, force: bool = False, ttl: in
         return items
 
 
-def index_by_title(plex_items) -> dict:
-    idx: dict = {}
+def plex_ids(p) -> set:
+    ids = set()
+    for g in getattr(p, "guids", None) or []:
+        scheme, _, val = (getattr(g, "id", "") or "").partition("://")
+        if val:
+            ids.add((scheme, val))
+    return ids
+
+
+def item_ids(it) -> list:
+    pairs = (("imdb", it.imdb_id), ("tmdb", it.tmdb_id), ("tvdb", it.tvdb_id))
+    return [(k, v) for k, v in pairs if v]
+
+
+def build_index(plex_items):
+    by_title, by_id = {}, {}
     for p in plex_items:
-        idx.setdefault(norm(p.title), []).append(p)
-    return idx
+        by_title.setdefault(norm(p.title), []).append(p)
+        for key in plex_ids(p):
+            by_id[key] = p
+    return by_title, by_id
 
 
-def match(idx: dict, title: str, year):
-    for p in idx.get(norm(title), []):
-        if year is None or getattr(p, "year", None) == year:
+def match(index, it):
+    """Match a list item to a Plex item by external id, else by title and year."""
+    by_title, by_id = index
+    for key in item_ids(it):
+        if key in by_id:
+            return by_id[key]
+    for p in by_title.get(norm(it.title), []):
+        if it.year is None or getattr(p, "year", None) == it.year:
             return p
     return None
 
@@ -132,12 +153,12 @@ def sync_all(lists) -> dict:
     report = {}
     for media_type, lib_name in libraries().items():
         section = srv.library.section(lib_name)
-        idx = index_by_title(library_items(srv, media_type, force=True))
+        idx = build_index(library_items(srv, media_type, force=True))
         for lst in lists:
             items = [i for i in lst.items if i.media_type == media_type]
             matched, missing = [], []
             for it in items:
-                p = match(idx, it.title, it.year)
+                p = match(idx, it)
                 if p:
                     matched.append(p)
                 else:

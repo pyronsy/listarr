@@ -64,4 +64,24 @@
   <form class="row" method="post" action="/settings/plex/change-server"><button class="plain">Change server</button></form>
   <form class="row" method="post" action="/settings/plex/signout"><button class="plain">Sign out</button></form>
 {% endif %}
+
+<h2 id="search">Title search</h2>
+<p class="sub">Add API keys to search for titles and add them to lists. IMDb has no free public search API, so IMDb results come through OMDb, which is built on IMDb data. Keys are stored in the data folder with the rest of your settings.</p>
+<form method="post" action="/settings/search-keys">
+  <p><label>TMDB key or read access token<br>
+    <input type="password" name="tmdb_key" autocomplete="off" size="40" placeholder="{{ 'Saved. Enter a new one to replace it' if keys.tmdb else 'Paste key' }}"></label>
+    <a href="https://www.themoviedb.org/settings/api" rel="noreferrer">Get a key</a></p>
+  <p><label>OMDb key (for IMDb)<br>
+    <input type="password" name="omdb_key" autocomplete="off" size="40" placeholder="{{ 'Saved. Enter a new one to replace it' if keys.omdb else 'Paste key' }}"></label>
+    <a href="https://www.omdbapi.com/apikey.aspx" rel="noreferrer">Get a key</a></p>
+  <p><label>TVDB API key<br>
+    <input type="password" name="tvdb_key" autocomplete="off" size="40" placeholder="{{ 'Saved. Enter a new one to replace it' if keys.tvdb else 'Paste key' }}"></label>
+    <a href="https://thetvdb.com/api-information" rel="noreferrer">Get a key</a></p>
+  <p><label>TVDB subscriber PIN (only if your key needs one)<br>
+    <input type="password" name="tvdb_pin" autocomplete="off" size="20"></label></p>
+  <p><button>Save keys</button></p>
+</form>
+{% for k, label in [("tmdb","TMDB"),("omdb","OMDb"),("tvdb","TVDB")] %}{% if keys[k] %}
+<form class="row" method="post" action="/settings/search-keys/clear"><input type="hidden" name="provider" value="{{ k }}"><button class="plain">Remove {{ label }} key</button></form>
+{% endif %}{% endfor %}
 {% endblock %}

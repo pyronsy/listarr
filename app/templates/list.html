@@ -2,6 +2,8 @@
 {% block content %}
 <h1>{{ lst.name }}</h1>
 <p class="sub">{{ lst.description }}</p>
+{% if added or skipped %}<p class="ok">Added {{ added }} title{{ "" if added == 1 else "s" }}{% if skipped %}, skipped {{ skipped }} already in the list{% endif %}.</p>{% endif %}
+<p><a href="/search?list={{ lst.id }}">Search IMDb, TMDB and TVDB to add titles</a></p>
 
 <form method="post" action="/lists/{{ lst.id }}/items">
 <textarea name="titles" placeholder="One title per line. Add a year to avoid mix-ups, e.g. Dune (2021)" required></textarea>
@@ -11,10 +13,11 @@
 
 {% if items %}
 <table>
-<tr><th>Title</th><th>Year</th><th>Type</th><th></th></tr>
+<tr><th>Title</th><th>Year</th><th>Type</th><th>IDs</th><th></th></tr>
 {% for i in items %}
 <tr>
 <td>{{ i.title }}</td><td>{{ i.year or "" }}</td><td>{{ "TV show" if i.media_type == "show" else "Movie" }}</td>
+<td>{% if i.imdb_id %}<a href="https://www.imdb.com/title/{{ i.imdb_id }}/" rel="noreferrer">IMDb</a> {% endif %}{% if i.tmdb_id %}<a href="https://www.themoviedb.org/{{ 'tv' if i.media_type == 'show' else 'movie' }}/{{ i.tmdb_id }}" rel="noreferrer">TMDB</a> {% endif %}{% if i.tvdb_id %}<span class="ok">TVDB {{ i.tvdb_id }}</span>{% endif %}</td>
 <td><form method="post" action="/lists/{{ lst.id }}/items/{{ i.id }}/delete"><button class="plain">Remove</button></form></td>
 </tr>
 {% endfor %}

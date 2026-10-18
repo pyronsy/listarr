@@ -1,15 +1,17 @@
 import asyncio
+import json
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, Form, Query, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from . import plex_sync, settings
+from . import plex_sync, providers, settings
 from .db import Item, MediaList, SessionLocal, init_db
 
 BASE = Path(__file__).parent
@@ -76,12 +78,12 @@ def create_list(name: str = Form(...), description: str = Form("")):
 
 
 @app.get("/lists/{list_id}")
-def show_list(request: Request, list_id: int):
+def show_list(request: Request, list_id: int, added: int = 0, skipped: int = 0):
     with SessionLocal() as s:
         lst = s.get(MediaList, list_id)
         if not lst:
             return RedirectResponse("/", status_code=303)
-        return render(request, "list.html", lst=lst, items=list(lst.items))
+        return render(request, "list.html", lst=lst, items=list(lst.items), added=added, skipped=skipped)
 
 
 LINE = re.compile(r"^(.*?)\s*\((\d{4})\)\s*$")
@@ -138,11 +140,14 @@ def library(request: Request, type: str = "movie", list: str = "", q: str = ""):
         return render(request, "library.html", rows=[], lists=[], error="Plex isn't connected yet.", type=media_type, sel=list, q=q)
     with SessionLocal() as s:
         lists = s.query(MediaList).order_by(MediaList.name).all()
-        membership: dict = {}
+        by_title: dict = {}
+        by_id: dict = {}
         for lst in lists:
             for it in lst.items:
                 if it.media_type == media_type:
-                    membership.setdefault(plex_sync.norm(it.title), []).append((it.year, lst))
+                    by_title.setdefault(plex_sync.norm(it.title), []).append((it.year, lst))
+                    for key in plex_sync.item_ids(it):
+                        by_id.setdefault(key, []).append(lst)
         try:
             plex_items = plex_sync.library_items(plex_sync.connect(), media_type)
         except Exception as e:
@@ -151,10 +156,14 @@ def library(request: Request, type: str = "movie", list: str = "", q: str = ""):
         for p in plex_items:
             if q and q.lower() not in p.title.lower():
                 continue
-            in_lists = [
-                l for (y, l) in membership.get(plex_sync.norm(p.title), [])
-                if y is None or y == getattr(p, "year", None)
-            ]
+            found = {}
+            for key in plex_sync.plex_ids(p):
+                for l in by_id.get(key, []):
+                    found[l.id] = l
+            for (y, l) in by_title.get(plex_sync.norm(p.title), []):
+                if y is None or y == getattr(p, "year", None):
+                    found[l.id] = l
+            in_lists = [*found.values()]
             if list == "none" and in_lists:
                 continue
             if list.isdigit() and int(list) not in {l.id for l in in_lists}:
@@ -179,6 +188,7 @@ def settings_page(request: Request):
         "movie_libs": [],
         "show_libs": [],
         "error": None,
+        "keys": {k: bool(s.get(f"{k}_key")) for k in ("tmdb", "omdb", "tvdb")},
     }
     try:
         if ctx["signed_in"] and not ctx["has_server"]:
@@ -237,3 +247,129 @@ def plex_signout():
     settings.clear_plex()
     plex_sync.reset_cache()
     return RedirectResponse("/settings", status_code=303)
+
+
+# ---- Title search (IMDb via OMDb, TMDB, TVDB) -------------------------------
+
+_IMDB = re.compile(r"^tt\d{1,10}$")
+_NUM = re.compile(r"^\d{1,10}$")
+
+
+def _id(value, pattern):
+    value = str(value or "").strip()
+    return value if pattern.match(value) else ""
+
+
+def _is_duplicate(lst, e):
+    new_ids = {(k, e[f"{k}_id"]) for k in ("imdb", "tmdb", "tvdb") if e[f"{k}_id"]}
+    for it in lst.items:
+        if it.media_type != e["media_type"]:
+            continue
+        have = {(k, getattr(it, f"{k}_id")) for k in ("imdb", "tmdb", "tvdb") if getattr(it, f"{k}_id")}
+        if new_ids & have:
+            return True
+        if plex_sync.norm(it.title) == plex_sync.norm(e["title"]) and (
+            it.year == e["year"] or it.year is None or e["year"] is None
+        ):
+            return True
+    return False
+
+
+@app.get("/search")
+def search_page(
+    request: Request,
+    q: str = "",
+    media: str = Query("both", alias="type"),
+    src: list[str] = Query(default=[]),
+    list_id: str = Query("", alias="list"),
+):
+    cfg = settings.load()
+    keys = {
+        "tmdb": cfg.get("tmdb_key", ""),
+        "omdb": cfg.get("omdb_key", ""),
+        "tvdb": cfg.get("tvdb_key", ""),
+        "tvdb_pin": cfg.get("tvdb_pin", ""),
+    }
+    available = [x for x in providers.SOURCES if keys[x]]
+    chosen = [x for x in available if x in src] or available
+    media = media if media in ("movie", "show") else "both"
+    q = q.strip()
+    results, errors = [], {}
+    if q and chosen:
+        results, errors = providers.search_all(q, media, chosen, keys)
+        for r in results:
+            r["payload"] = json.dumps(
+                {"t": r["title"], "y": r["year"], "m": r["media_type"],
+                 "i": r["imdb_id"], "d": r["tmdb_id"], "v": r["tvdb_id"]},
+                separators=(",", ":"),
+            )
+    with SessionLocal() as s:
+        lists = s.query(MediaList).order_by(MediaList.name).all()
+        return render(
+            request, "search.html", q=q, media=media, results=results, errors=errors, lists=lists,
+            list_id=list_id, available=available, chosen=chosen,
+            sources=[(k, providers.LABELS[k]) for k in providers.SOURCES],
+        )
+
+
+@app.post("/search/add")
+def search_add(list_id: int = Form(...), pick: list[str] = Form(default=[])):
+    entries = []
+    for raw in pick[:100]:
+        try:
+            d = json.loads(raw)
+        except ValueError:
+            continue
+        if not isinstance(d, dict):
+            continue
+        title = str(d.get("t") or "").strip()[:300]
+        if not title:
+            continue
+        year = d.get("y")
+        entries.append({
+            "title": title,
+            "year": year if isinstance(year, int) and 1800 <= year <= 2200 else None,
+            "media_type": "show" if d.get("m") == "show" else "movie",
+            "imdb_id": _id(d.get("i"), _IMDB),
+            "tmdb_id": _id(d.get("d"), _NUM),
+            "tvdb_id": _id(d.get("v"), _NUM),
+        })
+    tmdb_key = settings.load().get("tmdb_key", "")
+    if entries and tmdb_key:
+        with ThreadPoolExecutor(max_workers=6) as ex:
+            entries = [*ex.map(lambda e: providers.enrich_ids(e, tmdb_key), entries)]
+    added = skipped = 0
+    with SessionLocal() as s:
+        lst = s.get(MediaList, list_id)
+        if not lst:
+            return RedirectResponse("/search", status_code=303)
+        for e in entries:
+            if _is_duplicate(lst, e):
+                skipped += 1
+                continue
+            lst.items.append(Item(**e))
+            added += 1
+        s.commit()
+    return RedirectResponse(f"/lists/{list_id}?added={added}&skipped={skipped}", status_code=303)
+
+
+@app.post("/settings/search-keys")
+def save_search_keys(
+    tmdb_key: str = Form(""), omdb_key: str = Form(""),
+    tvdb_key: str = Form(""), tvdb_pin: str = Form(""),
+):
+    new = {k: v.strip() for k, v in (("tmdb_key", tmdb_key), ("omdb_key", omdb_key),
+                                      ("tvdb_key", tvdb_key), ("tvdb_pin", tvdb_pin)) if v.strip()}
+    if new:
+        settings.update(**new)
+    return RedirectResponse("/settings#search", status_code=303)
+
+
+@app.post("/settings/search-keys/clear")
+def clear_search_key(provider: str = Form(...)):
+    if provider in ("tmdb", "omdb", "tvdb"):
+        vals = {f"{provider}_key": ""}
+        if provider == "tvdb":
+            vals["tvdb_pin"] = ""
+        settings.update(**vals)
+    return RedirectResponse("/settings#search", status_code=303)

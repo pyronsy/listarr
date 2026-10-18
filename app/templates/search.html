@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Search titles</h1>
+<p class="sub">Look up movies and shows on IMDb, TMDB and TVDB, then add the ones you want to a list.</p>
+
+{% if not available %}
+<div class="err">No search sources are set up yet. <a href="/settings#search">Add an API key in Settings</a>.</div>
+{% else %}
+<form class="row" method="get" action="/search">
+  <input name="q" value="{{ q }}" placeholder="Title" size="28" required>
+  <select name="type">
+    <option value="both" {{ "selected" if media == "both" }}>Movies and TV</option>
+    <option value="movie" {{ "selected" if media == "movie" }}>Movies</option>
+    <option value="show" {{ "selected" if media == "show" }}>TV shows</option>
+  </select>
+  {% if list_id %}<input type="hidden" name="list" value="{{ list_id }}">{% endif %}
+  {% for key, label in sources %}
+  <label><input type="checkbox" name="src" value="{{ key }}" {{ "checked" if key in chosen }} {{ "disabled" if key not in available }}> {{ label }}{% if key not in available %} <span class="ok">(no key)</span>{% endif %}</label>
+  {% endfor %}
+  <button>Search</button>
+</form>
+{% endif %}
+
+{% for name, msg in errors.items() %}<div class="err">{{ name }}: {{ msg }}</div>{% endfor %}
+
+{% if q and not results and not errors %}<p>No results for "{{ q }}".</p>{% endif %}
+
+{% if results %}
+  {% if not lists %}
+  <div class="err">Create a list first, then come back to add these. <a href="/">Go to lists</a></div>
+  {% endif %}
+  <form method="post" action="/search/add">
+    <p class="row">
+      <label>Add to list
+        <select name="list_id" required>
+          {% for l in lists %}<option value="{{ l.id }}" {{ "selected" if l.id|string == list_id }}>{{ l.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <button {% if not lists %}disabled{% endif %}>Add selected</button>
+    </p>
+    <table>
+      <tr>
+        <th><input type="checkbox" aria-label="Select all" onclick="document.querySelectorAll('input[name=pick]').forEach(c => c.checked = this.checked)"></th>
+        <th></th><th>Title</th><th>Type</th><th>Found on</th>
+      </tr>
+      {% for r in results %}
+      <tr>
+        <td><input type="checkbox" name="pick" value="{{ r.payload }}" aria-label="Select {{ r.title }}"></td>
+        <td>{% if r.poster %}<img src="{{ r.poster }}" alt="" width="46" loading="lazy" referrerpolicy="no-referrer">{% endif %}</td>
+        <td><strong>{{ r.title }}</strong>{% if r.year %} ({{ r.year }}){% endif %}
+          {% if r.overview %}<br><span class="ok">{{ r.overview[:140] }}{% if r.overview|length > 140 %}…{% endif %}</span>{% endif %}</td>
+        <td>{{ "TV show" if r.media_type == "show" else "Movie" }}</td>
+        <td>{% for s in r.sources %}<span class="tag">{{ s }}</span>{% endfor %}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </form>
+{% endif %}
+{% endblock %}
